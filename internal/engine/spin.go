@@ -4,6 +4,19 @@ import (
 	"fmt"
 )
 
+// NewReels creates a new set of reels
+func NewReels() *Reels {
+	return &Reels{
+		Reels: [][]Symbol{
+			{Dynamite, Bat, Saw, Hammer, Key, A, K, Q, J, Bonus, Wild},
+			{Dynamite, Bat, Saw, Hammer, Key, A, K, Q, J, Bonus, Wild},
+			{Dynamite, Bat, Saw, Hammer, Key, A, K, Q, J, Bonus, Wild},
+			{Dynamite, Bat, Saw, Hammer, Key, A, K, Q, J, Bonus, Wild},
+			{Dynamite, Bat, Saw, Hammer, Key, A, K, Q, J, Bonus, Wild},
+		},
+	}
+}
+
 // NewWindow creates a new window with the given dimensions
 func NewWindow(width, height int) *Window {
 	symbols := make([][]Symbol, width)
@@ -12,15 +25,6 @@ func NewWindow(width, height int) *Window {
 	}
 	return &Window{
 		Symbols: symbols,
-	}
-}
-
-// NewCoinStore creates a new coin store
-func NewCoinStore() *CoinStore {
-	return &CoinStore{
-		CoinsCount:  0,
-		FGTriggered: false,
-		FGSpins:     0,
 	}
 }
 
@@ -98,178 +102,13 @@ func (s *SpinFactory) Generate(wager int64) (*Spin, error) {
 	// Calculate award
 	award := s.calculateAward(window, wager)
 
-	// Create spin result
-	spin := &Spin{
+	return &Spin{
 		Window:       window,
 		Stops:        stops,
 		Wager:        wager,
 		Award:        award,
 		BaseAwardVal: award,
-	}
-
-	return spin, nil
-}
-
-// GenerateWithCoins creates a new spin and handles coin accumulation
-func (s *SpinFactory) GenerateWithCoins(wager int64, coins *CoinStore) (*Spin, error) {
-	if wager <= 0 {
-		return nil, fmt.Errorf("wager must be positive")
-	}
-
-	// Generate base spin
-	spin, err := s.Generate(wager)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add coin store reference
-	spin.Coins = coins
-
-	// Check for wild symbols in the window and add coins
-	spin.CoinsAdded = s.processCoinAccumulation(spin)
-
-	// Check if free game is triggered
-	if spin.CoinsAdded > 0 {
-		spin.FGTriggered = s.checkFreeGameTrigger(spin)
-	}
-
-	return spin, nil
-}
-
-// processCoinAccumulation checks for wild symbols and adds coins
-func (s *SpinFactory) processCoinAccumulation(spin *Spin) int {
-	// Skip if this is already a free game
-	if spin.IsFreeGame {
-		return 0
-	}
-
-	// Check for Wild symbols in the window
-	hasWild := false
-	for i := range spin.Window.Symbols {
-		for j := range spin.Window.Symbols[i] {
-			if spin.Window.Symbols[i][j] == Wild {
-				hasWild = true
-				break
-			}
-		}
-		if hasWild {
-			break
-		}
-	}
-
-	// If no wild symbols, return 0
-	if !hasWild {
-		return 0
-	}
-
-	// Determine number of coins to add (1 or 2) based on weights
-	val, err := s.rng.Rand(100)
-	if err != nil {
-		return 0
-	}
-
-	// Decide based on CoinCountWeights (80% for 1 coin, 20% for 2 coins)
-	cumulativeWeight := uint64(0)
-	coinsToAdd := 0
-	for i, weight := range CoinCountWeights {
-		cumulativeWeight += uint64(weight)
-		if val < cumulativeWeight {
-			coinsToAdd = i + 1 // Add 1 or 2 coins
-			break
-		}
-	}
-
-	// Update coin count
-	if spin.Coins != nil {
-		spin.Coins.CoinsCount += coinsToAdd
-	}
-
-	return coinsToAdd
-}
-
-// checkFreeGameTrigger checks if free game is triggered based on current coin count
-func (s *SpinFactory) checkFreeGameTrigger(spin *Spin) bool {
-	if spin.Coins == nil || spin.Coins.FGTriggered {
-		return false
-	}
-
-	// Helper function to check trigger probability for a single increment
-	checkTrigger := func() bool {
-		coinCount := spin.Coins.CoinsCount
-
-		// Check if we have enough coins to potentially trigger and if we haven't triggered already
-		if coinCount < 8 {
-			return false
-		}
-
-		// Get trigger probability based on coin count (capped at 17 coins)
-		triggerProb := 0
-		if coinCount > 17 {
-			triggerProb = 100 // 100% trigger at >17 coins
-		} else {
-			triggerProb = FGTriggerProbabilities[coinCount]
-		}
-
-		// Roll for triggering
-		val, err := s.rng.Rand(100)
-		if err != nil {
-			return false
-		}
-
-		return int(val) < triggerProb
-	}
-
-	// Check triggers based on number of coins added
-	leftTrigger := false
-	rightTrigger := false
-
-	// First coin check
-	if spin.CoinsAdded > 0 {
-		leftTrigger = checkTrigger()
-	}
-
-	// Second coin check (if applicable)
-	if spin.CoinsAdded > 1 {
-		// Temporarily decrement coin count to check the second coin separately
-		spin.Coins.CoinsCount--
-		rightTrigger = checkTrigger()
-		spin.Coins.CoinsCount++ // Restore the count
-	}
-
-	// Set number of free spins based on trigger results
-	if leftTrigger && rightTrigger {
-		spin.Coins.FGSpins = 12
-		spin.Coins.FGTriggered = true
-		return true
-	} else if leftTrigger || rightTrigger {
-		spin.Coins.FGSpins = 6
-		spin.Coins.FGTriggered = true
-		return true
-	}
-
-	return false
-}
-
-// GenerateFreeGame generates a spin for the free game mode
-func (s *SpinFactory) GenerateFreeGame(wager int64, coins *CoinStore) (*Spin, error) {
-	if wager <= 0 {
-		return nil, fmt.Errorf("wager must be positive")
-	}
-
-	// Generate a regular spin
-	spin, err := s.Generate(wager)
-	if err != nil {
-		return nil, err
-	}
-
-	// Mark as free game
-	spin.IsFreeGame = true
-	spin.Coins = coins
-
-	// Free Game spins might have different multipliers or other special rules
-	// that can be applied here
-
-	return spin, nil
+	}, nil
 }
 
 // calculateAward calculates the award for a window
@@ -347,38 +186,32 @@ func (s *SpinFactory) evaluateSymbolLine(symbols []Symbol, wager int64) int64 {
 // selectReelset selects a reelset based on weights from pick-probabilities.csv
 // Returns the selected reelset and its index
 func selectReelset(rng RNG) (*Reels, int, error) {
-	// ВРЕМЕННАЯ МОДИФИКАЦИЯ: всегда возвращаем только reel1
-	return reel4, 0, nil
+	// Get a random number from 0 to 99
+	val, err := rng.Rand(100)
+	if err != nil {
+		return nil, -1, err
+	}
 
-	// Оригинальный код (закомментирован на время тестирования)
-	/*
-		// Get a random number from 0 to 99
-		val, err := rng.Rand(100)
-		if err != nil {
-			return nil, -1, err
-		}
-
-		// Select based on weights
-		cumulativeWeight := uint64(0)
-		for i, weight := range ReelsetWeights {
-			cumulativeWeight += uint64(weight)
-			if val < cumulativeWeight {
-				switch i {
-				case 0:
-					return reel1, 0, nil
-				case 1:
-					return reel2, 1, nil
-				case 2:
-					return reel3, 2, nil
-				case 3:
-					return reel4, 3, nil
-				}
+	// Select based on weights
+	cumulativeWeight := uint64(0)
+	for i, weight := range ReelsetWeights {
+		cumulativeWeight += uint64(weight)
+		if val < cumulativeWeight {
+			switch i {
+			case 0:
+				return reel1, 0, nil
+			case 1:
+				return reel2, 1, nil
+			case 2:
+				return reel3, 2, nil
+			case 3:
+				return reel4, 3, nil
 			}
 		}
+	}
 
-		// Default to the first reelset
-		return reel1, 0, nil
-	*/
+	// Default to the first reelset
+	return reel1, 0, nil
 }
 
 // Implement the Spin interface
@@ -387,10 +220,7 @@ func (s *Spin) BaseAward() int64 {
 }
 
 func (s *Spin) BonusAward() int64 {
-	if s.IsFreeGame {
-		return s.Award // In free game, all award is considered bonus
-	}
-	return 0
+	return 0 // No bonus in this simple implementation
 }
 
 func (s *Spin) GetWager() int64 {
@@ -402,7 +232,7 @@ func (s *Spin) OriginalWager() int64 {
 }
 
 func (s *Spin) BonusTriggered() bool {
-	return s.FGTriggered
+	return false // No bonus in this simple implementation
 }
 
 func (s *Spin) DeepCopy() interface{} {
@@ -414,18 +244,6 @@ func (s *Spin) DeepCopy() interface{} {
 		Wager:        s.Wager,
 		Award:        s.Award,
 		BaseAwardVal: s.BaseAwardVal,
-		IsFreeGame:   s.IsFreeGame,
-		CoinsAdded:   s.CoinsAdded,
-		FGTriggered:  s.FGTriggered,
-	}
-
-	// Deep copy the coin store if it exists
-	if s.Coins != nil {
-		newSpin.Coins = &CoinStore{
-			CoinsCount:  s.Coins.CoinsCount,
-			FGTriggered: s.Coins.FGTriggered,
-			FGSpins:     s.Coins.FGSpins,
-		}
 	}
 
 	for i, stop := range s.Stops {
@@ -485,25 +303,4 @@ func NewSpinFactoryWithAllReelsets(rng RNG) *SpinFactory {
 		rng:      rng,
 		reelsets: []*Reels{reel1, reel2, reel3, reel4},
 	}
-}
-
-// FreeGameInfo returns information about the free game if triggered
-func (s *Spin) FreeGameInfo() (triggered bool, spins int) {
-	if s.Coins == nil {
-		return false, 0
-	}
-	return s.FGTriggered, s.Coins.FGSpins
-}
-
-// IsFG returns whether this is a free game spin
-func (s *Spin) IsFG() bool {
-	return s.IsFreeGame
-}
-
-// GetCoins returns the current coin count
-func (s *Spin) GetCoins() int {
-	if s.Coins == nil {
-		return 0
-	}
-	return s.Coins.CoinsCount
 }

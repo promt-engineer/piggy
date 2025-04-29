@@ -259,10 +259,6 @@ type Spin struct {
 	Wager        int64
 	Award        int64
 	BaseAwardVal int64
-	IsFreeGame   bool       // Indicates if this is a free game spin
-	CoinsAdded   int        // Number of coins added in this spin (0, 1, or 2)
-	Coins        *CoinStore // Reference to coin store
-	FGTriggered  bool       // Whether Free Game was triggered in this spin
 }
 
 // RNG interface for random number generation
@@ -323,27 +319,3 @@ var AllReelsetData = []ReelsetData{
 }
 
 const TotalRTP = 0.1128199856
-
-// CoinStore represents the state of collected coins
-type CoinStore struct {
-	CoinsCount  int  // Current number of collected coins
-	FGTriggered bool // Whether Free Game has been triggered
-	FGSpins     int  // Number of Free Game spins (6 or 12)
-}
-
-// Coin weights for determining number of added coins (1 or 2)
-var CoinCountWeights = []int{80, 20} // 80% chance for 1 coin, 20% chance for 2 coins
-
-// Free Game trigger probabilities based on number of coins
-var FGTriggerProbabilities = map[int]int{
-	8:  10,  // 10% chance at 8 coins
-	9:  20,  // 20% chance at 9 coins
-	10: 30,  // 30% chance at 10 coins
-	11: 40,  // 40% chance at 11 coins
-	12: 50,  // 50% chance at 12 coins
-	13: 60,  // 60% chance at 13 coins
-	14: 70,  // 70% chance at 14 coins
-	15: 80,  // 80% chance at 15 coins
-	16: 90,  // 90% chance at 16 coins
-	17: 100, // 100% chance at 17 coins
-}
